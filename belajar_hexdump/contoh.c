@@ -1,6 +1,9 @@
 #include <ctype.h>
+#include <limits.h>
+#include <linux/limits.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <unistd.h>
 
 #define BYTES_PER_LINE 16
 #define ELF_HEADER_SIZE 64
@@ -12,6 +15,15 @@ void print_binary(unsigned char byte) {
 }
 
 int main() {
+  char executable_path[PATH_MAX];
+  size_t length = readlink("/proc/self/exe", executable_path, sizeof(executable_path) - 1);
+
+  if (length != -1) {
+    executable_path[length] = '\0';
+
+    printf("binary file: %s\n", executable_path);
+  }
+
   FILE* file = fopen("/proc/self/exe", "rb");
 
   if (file == NULL) {
@@ -28,11 +40,26 @@ int main() {
 
   unsigned long historgram[256] = {0};
 
+  unsigned char elf_header[64];
+  
+  rewind(file);
+  fread(elf_header, 1, sizeof(elf_header), file);
+  rewind(file);
+
+  switch (elf_header[4]) {
+    case 1:
+      printf("arsitektur: 32bit\n");
+    case 2:
+      printf("arsitektur: 64bit\n");
+  }
+
+  printf("\n\n");
+
   while ((bytes_read = fread(buffer, 1, BYTES_PER_LINE, file)) > 0) {
     if (offset < ELF_HEADER_SIZE) {
       printf("ELF HEADER ");
     } else {
-      printf("       ");
+      printf(" ");
     }
 
     printf("[%03zu] %08zx  ", line, offset);
@@ -71,17 +98,19 @@ int main() {
   printf("total bytes: %zu bytes\n\n", total_bytes);
 
   printf("\nfrekuensi bytenya\n");
-  
+
   for (int i = 0; i < 256; i++) {
     if (historgram[i] > 0) {
       printf("%02X (%3d) : %lu\n", i, i, historgram[i]);
     }
   }
-  
+
   printf("16 byte pertama dari binernya\n");
   rewind(file);
 
   fread(buffer, 1, BYTES_PER_LINE, file);
+
+  
 
   for (size_t i = 0; i < BYTES_PER_LINE; i++) {
     printf("%02X (%3d) : ", buffer[i], buffer[i]);
