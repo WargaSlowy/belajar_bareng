@@ -3,6 +3,7 @@
 #include <stdlib.h>
 
 #define BYTES_PER_LINE 16
+#define ELF_HEADER_SIZE 64
 
 void print_binary(unsigned char byte) {
   for (int i = 7; i >= 0; i--) {
@@ -12,9 +13,6 @@ void print_binary(unsigned char byte) {
 
 int main() {
   FILE* file = fopen("/proc/self/exe", "rb");
-
-  printf("sumber: `/proc/self/exe`\n");
-  printf("bytesnya: %d per baris\n\n", BYTES_PER_LINE);
 
   if (file == NULL) {
     perror("fopen");
@@ -28,7 +26,15 @@ int main() {
   size_t total_bytes = 0;
   size_t line = 1;
 
+  unsigned long historgram[256] = {0};
+
   while ((bytes_read = fread(buffer, 1, BYTES_PER_LINE, file)) > 0) {
+    if (offset < ELF_HEADER_SIZE) {
+      printf("ELF HEADER ");
+    } else {
+      printf("       ");
+    }
+
     printf("[%03zu] %08zx  ", line, offset);
 
     // heksadesimal
@@ -63,6 +69,14 @@ int main() {
 
   printf("\n\ntotal baris: %zu baris\n", line - 1);
   printf("total bytes: %zu bytes\n\n", total_bytes);
+
+  printf("\nfrekuensi bytenya\n");
+  
+  for (int i = 0; i < 256; i++) {
+    if (historgram[i] > 0) {
+      printf("%02X (%3d) : %lu\n", i, i, historgram[i]);
+    }
+  }
   
   printf("16 byte pertama dari binernya\n");
   rewind(file);
@@ -70,7 +84,7 @@ int main() {
   fread(buffer, 1, BYTES_PER_LINE, file);
 
   for (size_t i = 0; i < BYTES_PER_LINE; i++) {
-    printf("%02X : ", buffer[i]);
+    printf("%02X (%3d) : ", buffer[i], buffer[i]);
     print_binary(buffer[i]);
     printf("\n");
   }
