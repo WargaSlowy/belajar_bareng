@@ -59,7 +59,7 @@ int main() {
     if (offset < ELF_HEADER_SIZE) {
       printf("ELF HEADER ");
     } else {
-      printf(" ");
+      printf("           ");
     }
 
     printf("[%03zu] %08zx  ", line, offset);
