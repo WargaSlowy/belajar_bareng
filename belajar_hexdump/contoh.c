@@ -1,125 +1,114 @@
 #include <ctype.h>
 #include <limits.h>
 #include <linux/limits.h>
+#include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
 
-#define BYTES_PER_LINE 16
 #define ELF_HEADER_SIZE 64
 
-void print_binary(unsigned char byte) {
-  for (int i = 7; i >= 0; i--) {
-    putchar((byte >> i) & 1 ? '1' : '0');
+enum { BYTES_PER_LINE = 16 };
+
+typedef struct {
+  size_t total_bytes;
+  size_t total_lines;
+} DumpStatistik;
+
+static FILE* open_file(const char* filename) {
+  FILE* file = fopen(filename, "rb");
+
+  if (file == NULL) {
+    perror(filename);
+  }
+
+  return file;
+}
+
+static char printable_char(unsigned char c) {
+  return isprint(c) ? (char)c : '.';
+}
+
+static void print_offset(size_t offset) {
+  printf("%08zx  ", offset);
+}
+
+static void print_hex(const unsigned char* buffer, size_t bytes_read) {
+  for (size_t i = 0; i < BYTES_PER_LINE; i++) {
+    if (i < bytes_read) {
+      printf("%02X ", buffer[i]);
+    } else {
+      printf("  ");
+    }
+
+    if (i == 7) {
+      printf("  ");
+    }
   }
 }
 
-int main() {
-  char executable_path[PATH_MAX];
-  size_t length = readlink("/proc/self/exe", executable_path, sizeof(executable_path) - 1);
+static void print_ascii(const unsigned char* buffer, size_t bytes_read) {
+  putchar('|');
 
-  if (length != -1) {
-    executable_path[length] = '\0';
-
-    printf("binary file: %s\n", executable_path);
+  for (size_t i = 0; i < bytes_read; i++) {
+    putchar(printable_char(buffer[i]));
   }
 
-  FILE* file = fopen("/proc/self/exe", "rb");
-
-  if (file == NULL) {
-    perror("fopen");
-    return EXIT_FAILURE;
+  for (size_t i = bytes_read; i < BYTES_PER_LINE; i++) {
+    putchar(' ');
   }
 
+  putchar('|');
+}
+
+static void print_line(const unsigned char* buffer, size_t bytes_read, size_t offset) {
+  print_offset(offset);
+  print_hex(buffer, bytes_read);
+  print_ascii(buffer, bytes_read);
+  putchar('\n');
+}
+
+static void dump_file(FILE* file, DumpStatistik* stats) {
   unsigned char buffer[BYTES_PER_LINE];
+
   size_t offset = 0;
   size_t bytes_read;
 
-  size_t total_bytes = 0;
-  size_t line = 1;
-
-  unsigned long historgram[256] = {0};
-
-  unsigned char elf_header[64];
-  
-  rewind(file);
-  fread(elf_header, 1, sizeof(elf_header), file);
-  rewind(file);
-
-  switch (elf_header[4]) {
-    case 1:
-      printf("arsitektur: 32bit\n");
-    case 2:
-      printf("arsitektur: 64bit\n");
-  }
-
-  printf("\n\n");
-
   while ((bytes_read = fread(buffer, 1, BYTES_PER_LINE, file)) > 0) {
-    if (offset < ELF_HEADER_SIZE) {
-      printf("ELF HEADER ");
-    } else {
-      printf("           ");
-    }
+    print_line(buffer, bytes_read, offset);
 
-    printf("[%03zu] %08zx  ", line, offset);
-
-    // heksadesimal
-    for (size_t i = 0; i < BYTES_PER_LINE; i++) {
-      if (i < bytes_read) {
-        printf("%02X ", buffer[i]);
-      } else {
-        printf("  ");
-      }
-
-      if (i == 7) {
-        printf("  ");
-      }
-    }
-
-    printf("  |");
-
-    // si ascii
-    for (size_t i = 0; i < bytes_read; i++) {
-      if (isprint(buffer[i])) {
-        putchar(buffer[i]);
-      } else {
-        putchar('.');
-      }
-    }
-
-    printf("|\n");
     offset += bytes_read;
-    total_bytes += bytes_read;
-    line++;
+
+    stats->total_bytes += bytes_read;
+    stats->total_lines++;
+  }
+}
+
+static void print_hasil(const char* filename, const DumpStatistik* stats) {
+  printf("filenya: %s\n", filename);
+  printf("total bytesnya: %zu\n", stats->total_bytes);
+  printf("total line: %zu\n", stats->total_lines);
+}
+
+int main(int argc, char* argv[]) {
+  if (argc != 2) {
+    fprintf(stderr, "penggunaan: %s [file]\n", argv[0]);
+    return EXIT_FAILURE;
   }
 
-  printf("\n\ntotal baris: %zu baris\n", line - 1);
-  printf("total bytes: %zu bytes\n\n", total_bytes);
+  FILE* file = open_file(argv[1]);
 
-  printf("\nfrekuensi bytenya\n");
-
-  for (int i = 0; i < 256; i++) {
-    if (historgram[i] > 0) {
-      printf("%02X (%3d) : %lu\n", i, i, historgram[i]);
-    }
+  if (file == NULL) {
+    return EXIT_FAILURE;
   }
 
-  printf("16 byte pertama dari binernya\n");
-  rewind(file);
+  DumpStatistik stats = {0};
 
-  fread(buffer, 1, BYTES_PER_LINE, file);
+  dump_file(file, &stats);
 
-  
-
-  for (size_t i = 0; i < BYTES_PER_LINE; i++) {
-    printf("%02X (%3d) : ", buffer[i], buffer[i]);
-    print_binary(buffer[i]);
-    printf("\n");
-  }
   fclose(file);
 
-  // 0 -> 255
+  print_hasil(argv[1], &stats);
 
   return 0;
 }
